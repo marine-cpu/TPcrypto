@@ -14,3 +14,5 @@ test_hash: test_hash.c utils.c hash.c
 
 test_attack: test_attack.c utils.c hash.c attack.c
 
+clean:
+	 rm -f test_speck test_hash test_attack *.o
