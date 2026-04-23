@@ -1,6 +1,7 @@
 #include "attack.h"
 #include <string.h>
 #include <math.h>
+#include <stdlib.h>
 
 #define TABLE_SIZE 200003  // premier, assez grand
 
@@ -80,43 +81,45 @@ double collision(byte ms[BLEN], byte mf[BLEN], byte hf[HLEN])
     clear_table();
 
     uint64_t count = 0;
+    uint64_t limit=(1ULL<<(HLEN*4));//2¨(n/2)
 
     // STEP 1 : stock ALL ms first side
-    for (;;) {
+    for (count; count < limit; count++) {
         rand_block(ms, BLEN);
-
         memcpy(tmp, h0, HLEN);
         compression(tmp, ms);
-
         insert(tmp, ms, ms);
-        count++;
 
+    }
+    for (uint64_t i=0;i<limit*4;i++){
         // STEP 2 : try match with mf side
         rand_block(mf, BLEN);
-        speck_dec(mf, zero, dec);
+        memcpy(tmp, h0, HLEN);
+        compression(tmp, mf);
 
-        count++;
+        count ++;
 
-        entry *e = find(dec);
-        if (e != NULL) {
-            memcpy(hf, dec, HLEN);
+        entry *e = find(tmp);
+        if (e != NULL && memcmp(e->ms,mf,BLEN)!=0) {
+            //Collision
+            memcpy(hf, tmp, HLEN);
             memcpy(ms, e->ms, BLEN);
             return log2((double)count);
         }
-
-        if (count > (1 << 20)) break; // safety
     }
-
-    return log2((double)count);
+    //failure
+    return -1.0;
 }
 
    //STEP 2 : LINK MSG
 
 double linkmsg(byte ml[BLEN], int *idx,const byte hf[HLEN],const byte *h, size_t len){
     uint64_t count = 0;
+    uint64_t limit=(1<<20); //limite
     byte tmp[HLEN];
+    size_t nb_blocks=len/BLEN;
 
-    while (1) {
+    while (count<limit) {
         rand_block(ml, BLEN);
 
         memcpy(tmp, hf, HLEN);
@@ -124,44 +127,44 @@ double linkmsg(byte ml[BLEN], int *idx,const byte hf[HLEN],const byte *h, size_t
 
         count++;
 
-        for (size_t i = 0; i < len / HLEN; i++) {
+        for (size_t i = 0; i < nb_blocks; i++) {
             if (memcmp(tmp, h + i * HLEN, HLEN) == 0) {
-                *idx = i;
+                *idx = (int)i;
                 return log2((double)count);
             }
         }
     }
+    return -1.0;//echec
 }
 
    //STEP 3 : ATTACK
 
 double attack(const byte *m, size_t len, byte *m2)
 {
-    byte h[65536];
+    byte *h=malloc((len/BLEN)*HLEN);
+    if(!h) return -1.0;
+
+    intermediate_digests(m,len,h);
+
     byte ms[BLEN], mf[BLEN], ml[BLEN], hf[HLEN];
+    int idx=-1;
 
-    intermediate_digests(m, len, h);
-
-    int idx;
     double c1 = collision(ms, mf, hf);
+    if(c1<0){printf("Echec de la collision\n");return -1.0;}
     double c2 = linkmsg(ml, &idx, hf, h, len);
+    if(c2<0){printf("Echec de linkmsg\n");return -1.0;}
 
     // construction m2
     size_t pos = 0;
 
     memcpy(m2 + pos, ms, BLEN); pos += BLEN;
-
     memcpy(m2 + pos, mf, BLEN); pos += BLEN;
-
-    for (int i = 0; i < idx; i++) {
-        memcpy(m2 + pos, mf, BLEN);
-        pos += BLEN;
-    }
-
     memcpy(m2 + pos, ml, BLEN); pos += BLEN;
 
-    memcpy(m2 + pos, m + idx * BLEN, len - idx * BLEN);
-    pos += (len - idx * BLEN);
-
+    size_t tail_offset=(idx+1)*BLEN;
+    size_t tail_len=len-tail_offset;
+    memcpy(m2 + pos, m + tail_offset, tail_len);
+    free(h);
+    
     return c1 + c2;
 }
