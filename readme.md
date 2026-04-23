@@ -181,15 +181,8 @@ h2 = 33072820a622e226
 
 ---
 
-## 8. Security Note
 
-This construction is for educational purposes only.
-
-It is not secure for real-world cryptographic use.
-
----
-
-## 9. Conclusion
+## 8. Conclusion
 
 This exercise shows how to build a hash function from:
 
@@ -198,5 +191,3 @@ This exercise shows how to build a hash function from:
 * Merkle–Damgård construction
 
 The implementation works correctly for all block sizes (32, 48, 64).
-
-```
